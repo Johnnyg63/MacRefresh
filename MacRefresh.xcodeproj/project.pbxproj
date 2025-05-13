@@ -26,6 +26,7 @@
 		89A9A5612DD33193004038AA /* MacRefresh */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = MacRefresh; sourceTree = BUILT_PRODUCTS_DIR; };
 		89A9A5642DD33193004038AA /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		89A9A5662DD33193004038AA /* olcPixelGameEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = olcPixelGameEngine.h; sourceTree = "<group>"; };
+		89CC408D2DD3566200F7D5A5 /* stb_image.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = stb_image.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -60,6 +61,7 @@
 			children = (
 				89A9A5642DD33193004038AA /* main.cpp */,
 				89A9A5662DD33193004038AA /* olcPixelGameEngine.h */,
+				89CC408D2DD3566200F7D5A5 /* stb_image.h */,
 			);
 			path = MacRefresh;
 			sourceTree = "<group>";

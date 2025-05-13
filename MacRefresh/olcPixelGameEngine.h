@@ -113,6 +113,8 @@
 
 	clang++ -arch x86_64 -std=c++17 -mmacosx-version-min=10.15 -Wall -framework OpenGL
 		-framework GLUT -framework Carbon -lpng YourSource.cpp -o YourProgName
+ 
+    // TODO: John Galvin: Request changes for this repo
 
 
 
@@ -357,11 +359,12 @@
 		  Updated Geometry2D to support non-segment line intersections
 		  +olcUTIL_Hardware3D.h file v1.01
 		  NOTICE OF DEPRECATION! olc::DecalInstance is to be removed and replaced by olc::GPUTask
-	2.30:
+	2.30: TODO: John Galvin, add functions etc
 
 
 	!! Apple Platforms will not see these updates immediately - Sorry, I dont have a mac to test... !!
 	!!   Volunteers willing to help appreciated, though PRs are manually integrated with credit     !!
+    !! TODO: John Galvin, add @Johnngy63 is on it ;) 
 */
 #pragma endregion
 
@@ -535,11 +538,24 @@ namespace _gfs = std::filesystem;
 #if defined(_WIN32)
 #define	OLC_IMAGE_GDI
 #endif
-#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__EMSCRIPTEN__)
+#if defined(__linux__) || defined(__FreeBSD__) || (__APPLE__) || defined(__EMSCRIPTEN__)
 #define	OLC_IMAGE_LIBPNG
 #endif
 #endif
 #endif
+
+// John Galvin: Apple Image Loader
+#if defined(__APPLE__)
+    #if defined(OLC_IMAGE_STB)
+        #if defined(__arm__)||(__aarch64__)
+            // Use Advance SIMD NEON when loading images for STB Default is SSE2 (x86)
+            #define STBI_NEON
+        #endif
+    #else
+        #define OLC_IMAGE_LIBPNG
+    #endif
+#endif
+
 
 // File resolver for runtime FS access of emscripten builds
 #if defined(__EMSCRIPTEN__)
@@ -7962,7 +7978,11 @@ namespace olc
 #if defined(OLC_PLATFORM_MACOS)
         platform = std::make_unique<olc::Platform_GLUT>();
 #endif
-        
+
+        // TODO: John Galvin: Remove Temp class for MAC
+#if defined(OLC_GFX_OpenGL45)
+        renderer = std::make_unique<olc::Renderer_DX11>();
+#endif
         // John Galvin: Added Metal GFX
         // TODO: John Galvin: Add Metal functionailty to support M3/M4 chips
 #if defined(OLC_GFX_METAL)
