@@ -506,7 +506,8 @@ namespace _gfs = std::filesystem;
 #endif
 #if defined(__APPLE__)
 #define GL_SILENCE_DEPRECATION
-#define OLC_PLATFORM_GLUT
+#define OLC_PLATFORM_MACOS       // John Galvin: Removed #define OLC_PLATFORM_GLUT and replaced with MACOS Platform
+//#define OLC_PLATFORM_GLUT
 #endif
 #if defined(__EMSCRIPTEN__)
 #define OLC_PLATFORM_EMSCRIPTEN
@@ -527,7 +528,10 @@ namespace _gfs = std::filesystem;
 #if defined(OLC_PLATFORM_EMSCRIPTEN)
 #define OLC_GFX_OPENGL33
 #else
-#define OLC_GFX_OPENGL10
+// TODO: John Galvin: remove temp code
+    #if !defined(__APPLE__)
+        #define OLC_GFX_OPENGL10
+    #endif
 #endif
 #endif
 #endif
@@ -1723,7 +1727,7 @@ namespace olc
 // will rely on shaders. Instead of having each PGEX responsible for
 // managing this, for convenience, this interface exists.
 
-#if defined(OLC_GFX_OPENGL33)
+#if defined(OLC_GFX_OPENGL33) || defined(OLC_GFX_MACOS_TEMP)
 
 #if defined(OLC_PLATFORM_WINAPI)
 #include <gl/GL.h>
@@ -1743,6 +1747,7 @@ namespace X11 {
 
 #if defined(__APPLE__)
 #define GL_SILENCE_DEPRECATION
+#define CALLSTYLE               // John Galvin
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl.h>
 #include <OpenGL/glu.h>
@@ -1812,7 +1817,6 @@ namespace olc
 } // olc namespace
 #endif // OpenGL33 Definitions
 #pragma endregion
-
 
 #endif // OLC_PGE_DEF
 
@@ -6254,6 +6258,599 @@ namespace olc
 // O------------------------------------------------------------------------------O
 // | END RENDERER: OpenGL 3.3 (3.0 es) (sh-sh-sh-shaders....)                     |
 // O------------------------------------------------------------------------------O
+
+#pragma region renderer_macosTemp
+// O------------------------------------------------------------------------------O
+// | START RENDERER: OpenGL 4.5 (For MACOS) John Galvin                  |
+// O------------------------------------------------------------------------------O
+#if defined(OLC_GFX_MACOS_TEMP)
+
+
+#if defined(__APPLE__)
+    #define GL_SILENCE_DEPRECATION
+    #define OGL_LOAD(t, n) n;
+    #include <OpenGL/OpenGL.h>
+    #include <OpenGL/gl.h>
+    #include <OpenGL/glu.h>
+#endif
+
+namespace olc
+{
+    
+    class Renderer_MACOS_TEMP : public olc::Renderer
+    {
+    private:
+#if defined(OLC_PLATFORM_EMSCRIPTEN)
+        EGLDisplay olc_Display;
+        EGLConfig olc_Config;
+        EGLContext olc_Context;
+        EGLSurface olc_Surface;
+#endif
+
+#if defined(OLC_PLATFORM_GLUT)
+        bool mFullScreen = false;
+#else
+#if !defined(OLC_PLATFORM_EMSCRIPTEN)
+        glDeviceContext_t glDeviceContext = 0;
+        glRenderContext_t glRenderContext = 0;
+#endif
+#endif
+        bool bSync = false;
+        olc::DecalMode nDecalMode = olc::DecalMode(-1); // Thanks Gusgo & Bispoo
+#if defined(OLC_PLATFORM_X11)
+        X11::Display* olc_Display = nullptr;
+        X11::Window* olc_Window = nullptr;
+        X11::XVisualInfo* olc_VisualInfo = nullptr;
+#endif
+
+    private:
+        locCreateShader_t* locCreateShader = nullptr;
+        locShaderSource_t* locShaderSource = nullptr;
+        locCompileShader_t* locCompileShader = nullptr;
+        locDeleteShader_t* locDeleteShader = nullptr;
+        locCreateProgram_t* locCreateProgram = nullptr;
+        locDeleteProgram_t* locDeleteProgram = nullptr;
+        locLinkProgram_t* locLinkProgram = nullptr;
+        locAttachShader_t* locAttachShader = nullptr;
+        locBindBuffer_t* locBindBuffer = nullptr;
+        locBufferData_t* locBufferData = nullptr;
+        locGenBuffers_t* locGenBuffers = nullptr;
+        locVertexAttribPointer_t* locVertexAttribPointer = nullptr;
+        locEnableVertexAttribArray_t* locEnableVertexAttribArray = nullptr;
+        locUseProgram_t* locUseProgram = nullptr;
+        locBindVertexArray_t* locBindVertexArray = nullptr;
+        locGenVertexArrays_t* locGenVertexArrays = nullptr;
+        locSwapInterval_t* locSwapInterval = nullptr;
+        locGetShaderInfoLog_t* locGetShaderInfoLog = nullptr;
+        locGetUniformLocation_t* locGetUniformLocation = nullptr;
+        locUniformMatrix4fv_t* locUniformMatrix4fv = nullptr;
+        locUniform1i_t* locUniform1i = nullptr;
+        locUniform4fv_t* locUniform4fv = nullptr;
+
+        uint32_t m_nFS = 0;
+        uint32_t m_nVS = 0;
+        uint32_t m_nQuadShader = 0;
+        uint32_t m_vbQuad = 0;
+        uint32_t m_vaQuad = 0;
+
+        uint32_t m_uniMVP = 0;
+        uint32_t m_uniIs3D = 0;
+        uint32_t m_uniTint = 0;
+
+        struct locVertex
+        {
+            float pos[4];
+            olc::vf2d tex;
+            olc::Pixel col;
+        };
+
+        std::array<float, 16> matProjection = { {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1} };
+
+        locVertex pVertexMem[OLC_MAX_VERTS];
+
+        olc::Renderable rendBlankQuad;
+
+    public:
+        void PrepareDevice() override
+        {
+#if defined(OLC_PLATFORM_GLUT)
+            //glutInit has to be called with main() arguments, make fake ones
+            int argc = 0;
+            char* argv[1] = { (char*)"" };
+            glutInit(&argc, argv);
+            glutInitWindowPosition(0, 0);
+            glutInitWindowSize(512, 512);
+            glutInitDisplayMode(GLUT_DOUBLE | GLUT_DEPTH | GLUT_RGBA);
+            // Creates the window and the OpenGL context for it
+            glutCreateWindow("OneLoneCoder.com - Pixel Game Engine");
+            glEnable(GL_TEXTURE_2D); // Turn on texturing
+            glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
+#endif
+        }
+
+        olc::rcode CreateDevice(std::vector<void*> params, bool bFullScreen, bool bVSYNC) override
+        {
+            // Create OpenGL Context
+#if defined(OLC_PLATFORM_WINAPI)
+            // Create Device Context
+            glDeviceContext = GetDC((HWND)(params[0]));
+            PIXELFORMATDESCRIPTOR pfd =
+            {
+                sizeof(PIXELFORMATDESCRIPTOR), 1,
+                PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
+                PFD_TYPE_RGBA, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                PFD_MAIN_PLANE, 0, 0, 0, 0
+            };
+
+            int pf = 0;
+            if (!(pf = ChoosePixelFormat(glDeviceContext, &pfd))) return olc::FAIL;
+            SetPixelFormat(glDeviceContext, pf, &pfd);
+
+            if (!(glRenderContext = wglCreateContext(glDeviceContext))) return olc::FAIL;
+            wglMakeCurrent(glDeviceContext, glRenderContext);
+
+            // Set Vertical Sync
+            locSwapInterval = OGL_LOAD(locSwapInterval_t, wglSwapIntervalEXT);
+            if (locSwapInterval && !bVSYNC) locSwapInterval(0);
+            bSync = bVSYNC;
+#endif
+
+#if defined(OLC_PLATFORM_X11)
+            using namespace X11;
+            // Linux has tighter coupling between OpenGL and X11, so we store
+            // various "platform" handles in the renderer
+            olc_Display = (X11::Display*)(params[0]);
+            olc_Window = (X11::Window*)(params[1]);
+            olc_VisualInfo = (X11::XVisualInfo*)(params[2]);
+
+            glDeviceContext = glXCreateContext(olc_Display, olc_VisualInfo, nullptr, GL_TRUE);
+            glXMakeCurrent(olc_Display, *olc_Window, glDeviceContext);
+
+            XWindowAttributes gwa;
+            XGetWindowAttributes(olc_Display, *olc_Window, &gwa);
+            glViewport(0, 0, gwa.width, gwa.height);
+
+            locSwapInterval = OGL_LOAD(locSwapInterval_t, glXSwapIntervalEXT);
+
+            if (locSwapInterval == nullptr && !bVSYNC)
+            {
+                printf("NOTE: Could not disable VSYNC, glXSwapIntervalEXT() was not found!\n");
+                printf("      Don't worry though, things will still work, it's just the\n");
+                printf("      frame rate will be capped to your monitors refresh rate - javidx9\n");
+            }
+
+            if (locSwapInterval != nullptr && !bVSYNC)
+                locSwapInterval(olc_Display, *olc_Window, 0);
+#endif
+
+#if defined(OLC_PLATFORM_EMSCRIPTEN)
+            EGLint const attribute_list[] = { EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_DEPTH_SIZE, 16, EGL_NONE };
+            EGLint const context_config[] = { EGL_CONTEXT_CLIENT_VERSION , 2, EGL_NONE };
+            EGLint num_config;
+
+            olc_Display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+            eglInitialize(olc_Display, nullptr, nullptr);
+            eglChooseConfig(olc_Display, attribute_list, &olc_Config, 1, &num_config);
+
+            /* create an EGL rendering context */
+            olc_Context = eglCreateContext(olc_Display, olc_Config, EGL_NO_CONTEXT, context_config);
+            olc_Surface = eglCreateWindowSurface(olc_Display, olc_Config, NULL, nullptr);
+            eglMakeCurrent(olc_Display, olc_Surface, olc_Surface, olc_Context);
+            //eglSwapInterval is currently a NOP, plement anyways in case it becomes supported
+            locSwapInterval = &eglSwapInterval;
+            locSwapInterval(olc_Display, bVSYNC ? 1 : 0);
+#endif
+
+#if defined(OLC_PLATFORM_GLUT)
+            mFullScreen = bFullScreen;
+            if (!bVSYNC)
+            {
+#if defined(__APPLE__)
+                GLint sync = 0;
+                CGLContextObj ctx = CGLGetCurrentContext();
+                if (ctx) CGLSetParameter(ctx, kCGLCPSwapInterval, &sync);
+#endif
+            }
+#else
+#if !defined(OLC_PLATFORM_EMSCRIPTEN)
+            glEnable(GL_TEXTURE_2D); // Turn on texturing
+            glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
+#endif
+#endif
+            // Load External OpenGL Functions
+            locCreateShader = OGL_LOAD(locCreateShader_t, glCreateShader);
+            locCompileShader = OGL_LOAD(locCompileShader_t, glCompileShader);
+            locShaderSource = OGL_LOAD(locShaderSource_t, glShaderSource);
+            locDeleteShader = OGL_LOAD(locDeleteShader_t, glDeleteShader);
+            locCreateProgram = OGL_LOAD(locCreateProgram_t, glCreateProgram);
+            locDeleteProgram = OGL_LOAD(locDeleteProgram_t, glDeleteProgram);
+            locLinkProgram = OGL_LOAD(locLinkProgram_t, glLinkProgram);
+            locAttachShader = OGL_LOAD(locAttachShader_t, glAttachShader);
+            locBindBuffer = OGL_LOAD(locBindBuffer_t, glBindBuffer);
+            locBufferData = OGL_LOAD(locBufferData_t, glBufferData);
+            locGenBuffers = OGL_LOAD(locGenBuffers_t, glGenBuffers);
+            locVertexAttribPointer = OGL_LOAD(locVertexAttribPointer_t, glVertexAttribPointer);
+            locEnableVertexAttribArray = OGL_LOAD(locEnableVertexAttribArray_t, glEnableVertexAttribArray);
+            locUseProgram = OGL_LOAD(locUseProgram_t, glUseProgram);
+            locGetShaderInfoLog = OGL_LOAD(locGetShaderInfoLog_t, glGetShaderInfoLog);
+            locUniform1i = OGL_LOAD(locUniform1i_t, glUniform1i);
+            locUniform4fv = OGL_LOAD(locUniform4fv_t, glUniform4fv);
+            locUniformMatrix4fv = OGL_LOAD(locUniformMatrix4fv_t, glUniformMatrix4fv);
+            locGetUniformLocation = OGL_LOAD(locGetUniformLocation_t, glGetUniformLocation);
+#if !defined(OLC_PLATFORM_EMSCRIPTEN)
+            locBindVertexArray = OGL_LOAD(locBindVertexArray_t, glBindVertexArray);
+            locGenVertexArrays = OGL_LOAD(locGenVertexArrays_t, glGenVertexArrays);
+#else
+            locBindVertexArray = glBindVertexArrayOES;
+            locGenVertexArrays = glGenVertexArraysOES;
+#endif
+
+            // Load & Compile Quad Shader - assumes no errors
+            m_nFS = locCreateShader(0x8B30);
+            const GLchar* strFS =
+#if defined(__arm__) || defined(OLC_PLATFORM_EMSCRIPTEN)
+                "#version 300 es\n"
+                "precision mediump float;"
+#else
+                "#version 330 core\n"
+#endif
+                "out vec4 pixel;\n"
+                "in vec2 oTex;\n"
+                "in vec4 oCol;\n"
+                "uniform sampler2D sprTex;\n"
+                "void main(){pixel = texture(sprTex, oTex) * oCol;}";
+            locShaderSource(m_nFS, 1, &strFS, NULL);
+            locCompileShader(m_nFS);
+
+            m_nVS = locCreateShader(0x8B31);
+            const GLchar* strVS =
+#if defined(__arm__) || defined(OLC_PLATFORM_EMSCRIPTEN)
+                "#version 300 es\n"
+                "precision mediump float;"
+#else
+                "#version 330 core\n"
+#endif
+                "layout(location = 0) in vec4 aPos;\n"
+                "layout(location = 1) in vec2 aTex;\n"
+                "layout(location = 2) in vec4 aCol;\n"
+                "uniform mat4 mvp;\n"
+                "uniform int is3d;\n"
+                "uniform vec4 tint;\n"
+                "out vec2 oTex;\n"
+                "out vec4 oCol;\n"
+                "void main(){ if(is3d!=0) {gl_Position = mvp * vec4(aPos.x, aPos.y, aPos.z, 1.0); oTex = aTex;} else {float p = 1.0 / aPos.z; gl_Position = p * vec4(aPos.x, aPos.y, 0.0, 1.0); oTex = p * aTex;} oCol = aCol * tint;}";
+            locShaderSource(m_nVS, 1, &strVS, NULL);
+            locCompileShader(m_nVS);
+
+            m_nQuadShader = locCreateProgram();
+            locAttachShader(m_nQuadShader, m_nFS);
+            locAttachShader(m_nQuadShader, m_nVS);
+            locLinkProgram(m_nQuadShader);
+
+            m_uniMVP = locGetUniformLocation(m_nQuadShader, "mvp");
+            m_uniIs3D = locGetUniformLocation(m_nQuadShader, "is3d");
+            m_uniTint = locGetUniformLocation(m_nQuadShader, "tint");
+            locUniform1i(m_uniIs3D, 0);
+            locUniformMatrix4fv(m_uniMVP, 16, false, matProjection.data());
+            float f[4] = { 100.0f, 100.0f, 100.0f, 100.0f };
+            locUniform4fv(m_uniTint, 4, f);
+
+            // Create Quad
+            locGenBuffers(1, &m_vbQuad);
+            locGenVertexArrays(1, &m_vaQuad);
+            locBindVertexArray(m_vaQuad);
+            locBindBuffer(0x8892, m_vbQuad);
+
+            locVertex verts[OLC_MAX_VERTS];
+            locBufferData(0x8892, sizeof(locVertex) * OLC_MAX_VERTS, verts, 0x88E0);
+            locVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(locVertex), 0); locEnableVertexAttribArray(0);
+            locVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(locVertex), (void*)(4 * sizeof(float))); locEnableVertexAttribArray(1);
+            locVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(locVertex), (void*)(6 * sizeof(float)));    locEnableVertexAttribArray(2);
+            locBindBuffer(0x8892, 0);
+            locBindVertexArray(0);
+
+            // Create blank texture for spriteless decals
+            rendBlankQuad.Create(1, 1);
+            rendBlankQuad.Sprite()->GetData()[0] = olc::WHITE;
+            rendBlankQuad.Decal()->Update();
+            return olc::rcode::OK;
+        }
+
+        olc::rcode DestroyDevice() override
+        {
+#if defined(OLC_PLATFORM_WINAPI)
+            wglDeleteContext(glRenderContext);
+#endif
+
+#if defined(OLC_PLATFORM_X11)
+            glXMakeCurrent(olc_Display, None, NULL);
+            glXDestroyContext(olc_Display, glDeviceContext);
+#endif
+
+#if defined(OLC_PLATFORM_GLUT)
+            glutDestroyWindow(glutGetWindow());
+#endif
+
+#if defined(OLC_PLATFORM_EMSCRIPTEN)
+            eglMakeCurrent(olc_Display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+            eglDestroyContext(olc_Display, olc_Context);
+            eglDestroySurface(olc_Display, olc_Surface);
+            eglTerminate(olc_Display);
+            olc_Display = EGL_NO_DISPLAY;
+            olc_Surface = EGL_NO_SURFACE;
+            olc_Context = EGL_NO_CONTEXT;
+#endif
+            return olc::rcode::OK;
+        }
+
+        void DisplayFrame() override
+        {
+#if defined(OLC_PLATFORM_WINAPI)
+            SwapBuffers(glDeviceContext);
+            if (bSync) DwmFlush(); // Woooohooooooo!!!! SMOOOOOOOTH!
+#endif
+
+#if defined(OLC_PLATFORM_X11)
+            X11::glXSwapBuffers(olc_Display, *olc_Window);
+#endif
+
+#if defined(OLC_PLATFORM_GLUT)
+            glutSwapBuffers();
+#endif
+
+#if defined(OLC_PLATFORM_EMSCRIPTEN)
+            eglSwapBuffers(olc_Display, olc_Surface);
+#endif
+        }
+
+        void PrepareDrawing() override
+        {
+            glEnable(GL_BLEND);
+            nDecalMode = DecalMode::NORMAL;
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            locUseProgram(m_nQuadShader);
+            locBindVertexArray(m_vaQuad);
+            float f[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+            locUniform4fv(m_uniTint, 1, f);
+
+#if defined(OLC_PLATFORM_EMSCRIPTEN)
+            locVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(locVertex), 0); locEnableVertexAttribArray(0);
+            locVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(locVertex), (void*)(4 * sizeof(float))); locEnableVertexAttribArray(1);
+            locVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(locVertex), (void*)(6 * sizeof(float)));    locEnableVertexAttribArray(2);
+#endif
+
+            locUniform1i(m_uniIs3D, 0);
+            locUniformMatrix4fv(m_uniMVP, 1, false, matProjection.data());
+            glDisable(GL_CULL_FACE);
+            glDepthFunc(GL_LESS);
+        }
+
+        void SetDecalMode(const olc::DecalMode& mode) override
+        {
+            if (mode != nDecalMode)
+            {
+                switch (mode)
+                {
+                case olc::DecalMode::NORMAL: glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);    break;
+                case olc::DecalMode::ADDITIVE: glBlendFunc(GL_SRC_ALPHA, GL_ONE); break;
+                case olc::DecalMode::MULTIPLICATIVE: glBlendFunc(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA);    break;
+                case olc::DecalMode::STENCIL: glBlendFunc(GL_ZERO, GL_SRC_ALPHA); break;
+                case olc::DecalMode::ILLUMINATE: glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_ALPHA);    break;
+                case olc::DecalMode::WIREFRAME: glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);    break;
+                }
+
+                nDecalMode = mode;
+            }
+        }
+
+        void DrawLayerQuad(const olc::vf2d& offset, const olc::vf2d& scale, const olc::Pixel tint) override
+        {
+            glDisable(GL_CULL_FACE);
+            locBindBuffer(0x8892, m_vbQuad);
+            locVertex verts[4] = {
+                {{-1.0f, -1.0f, 1.0, 0.0}, {0.0f * scale.x + offset.x, 1.0f * scale.y + offset.y}, tint},
+                {{+1.0f, -1.0f, 1.0, 0.0}, {1.0f * scale.x + offset.x, 1.0f * scale.y + offset.y}, tint},
+                {{-1.0f, +1.0f, 1.0, 0.0}, {0.0f * scale.x + offset.x, 0.0f * scale.y + offset.y}, tint},
+                {{+1.0f, +1.0f, 1.0, 0.0}, {1.0f * scale.x + offset.x, 0.0f * scale.y + offset.y}, tint},
+            };
+
+            locBufferData(0x8892, sizeof(locVertex) * 4, verts, 0x88E0);
+
+            locUniform1i(m_uniIs3D, 0);
+            float f[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+            locUniform4fv(m_uniTint, 1, f);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        }
+
+        void DrawDecal(const olc::DecalInstance& decal) override
+        {
+            glDisable(GL_CULL_FACE);
+            SetDecalMode(decal.mode);
+            if (decal.decal == nullptr)
+                glBindTexture(GL_TEXTURE_2D, rendBlankQuad.Decal()->id);
+            else
+                glBindTexture(GL_TEXTURE_2D, decal.decal->id);
+
+            locBindBuffer(0x8892, m_vbQuad);
+
+            for (uint32_t i = 0; i < decal.points; i++)
+                pVertexMem[i] = { { decal.pos[i].x, decal.pos[i].y, decal.w[i], 0.0 }, { decal.uv[i].x, decal.uv[i].y }, decal.tint[i] };
+
+            locBufferData(0x8892, sizeof(locVertex) * decal.points, pVertexMem, 0x88E0);
+            locUniform1i(m_uniIs3D, 0);
+
+            float f[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+            locUniform4fv(m_uniTint, 1, f);
+
+            if (nDecalMode == DecalMode::WIREFRAME)
+                glDrawArrays(GL_LINE_LOOP, 0, decal.points);
+            else
+            {
+                if (decal.structure == olc::DecalStructure::FAN)
+                    glDrawArrays(GL_TRIANGLE_FAN, 0, decal.points);
+                else if (decal.structure == olc::DecalStructure::STRIP)
+                    glDrawArrays(GL_TRIANGLE_STRIP, 0, decal.points);
+                else if (decal.structure == olc::DecalStructure::LIST)
+                    glDrawArrays(GL_TRIANGLES, 0, decal.points);
+                else if (decal.structure == olc::DecalStructure::LINE)
+                    glDrawArrays(GL_LINES, 0, decal.points);
+            }
+        }
+
+        uint32_t CreateTexture(const uint32_t width, const uint32_t height, const bool filtered, const bool clamp) override
+        {
+            UNUSED(width);
+            UNUSED(height);
+            uint32_t id = 0;
+            glGenTextures(1, &id);
+            glBindTexture(GL_TEXTURE_2D, id);
+
+            if (filtered)
+            {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            }
+            else
+            {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            }
+
+            if (clamp)
+            {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+            }
+            else
+            {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            }
+#if !defined(OLC_PLATFORM_EMSCRIPTEN)
+            glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+#endif
+            return id;
+        }
+
+        uint32_t DeleteTexture(const uint32_t id) override
+        {
+            glDeleteTextures(1, &id);
+            return id;
+        }
+
+        void UpdateTexture(uint32_t id, olc::Sprite* spr) override
+        {
+            UNUSED(id);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, spr->width, spr->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, spr->GetData());
+        }
+
+        void ReadTexture(uint32_t id, olc::Sprite* spr) override
+        {
+            glReadPixels(0, 0, spr->width, spr->height, GL_RGBA, GL_UNSIGNED_BYTE, spr->GetData());
+        }
+
+        void ApplyTexture(uint32_t id) override
+        {
+            glBindTexture(GL_TEXTURE_2D, id);
+        }
+
+        void ClearBuffer(olc::Pixel p, bool bDepth) override
+        {
+            glClearColor(float(p.r) / 255.0f, float(p.g) / 255.0f, float(p.b) / 255.0f, float(p.a) / 255.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            if (bDepth) glClear(GL_DEPTH_BUFFER_BIT);
+        }
+
+        void UpdateViewport(const olc::vi2d& pos, const olc::vi2d& size) override
+        {
+            glViewport(pos.x, pos.y, size.x, size.y);
+        }
+
+        void Set3DProjection(const std::array<float, 16>& mat)
+        {
+            matProjection = mat;
+        }
+
+        void DoGPUTask(const olc::GPUTask& task) override
+        {
+            SetDecalMode(task.mode);
+            if (task.decal == nullptr)
+                glBindTexture(GL_TEXTURE_2D, rendBlankQuad.Decal()->id);
+            else
+                glBindTexture(GL_TEXTURE_2D, task.decal->id);
+
+            locBindBuffer(0x8892, m_vbQuad);
+
+            //for (uint32_t i = 0; i < task.vb.size; i++)
+            // pVertexMem[i] = { { decal.pos[i].x, decal.pos[i].y, decal.w[i] }, { decal.uv[i].x, decal.uv[i].y }, decal.tint[i] };
+
+            // ooooof... f^%ing win!!! B) [planned of course]
+            locBufferData(0x8892, sizeof(GPUTask::Vertex) * task.vb.size(), task.vb.data(), 0x88E0);
+
+            // Use 3D Shader
+            locUniform1i(m_uniIs3D, 1);
+
+            // Use MVP Matrix - yeah, but this needs to happen somewhere
+            // and at least its per object which makes sense
+            std::array<float, 16> matMVP;
+            for (size_t c = 0; c < 4; c++)
+                for (size_t r = 0; r < 4; r++)
+                    matMVP[c * 4 + r] =
+                    + matProjection[0 * 4 + r] * task.mvp[c * 4 + 0]
+                    + matProjection[1 * 4 + r] * task.mvp[c * 4 + 1]
+                    + matProjection[2 * 4 + r] * task.mvp[c * 4 + 2]
+                    + matProjection[3 * 4 + r] * task.mvp[c * 4 + 3];
+            locUniformMatrix4fv(m_uniMVP, 1, false, matMVP.data());
+
+            float f[4] = { float(task.tint.r) / 255.0f, float(task.tint.g) / 255.0f, float(task.tint.b) / 255.0f, float(task.tint.a) / 255.0f };
+            locUniform4fv(m_uniTint, 1, f);
+
+            
+            if (task.cull == olc::CullMode::NONE)
+            {
+                glCullFace(GL_FRONT);
+                glDisable(GL_CULL_FACE);
+            }
+            else if(task.cull == olc::CullMode::CW)
+            {
+                glCullFace(GL_FRONT);
+                glEnable(GL_CULL_FACE);
+            }
+            else if (task.cull == olc::CullMode::CCW)
+            {
+                glCullFace(GL_BACK);
+                glEnable(GL_CULL_FACE);
+            }
+
+            if(task.depth)
+                glEnable(GL_DEPTH_TEST);
+
+            
+
+            if (nDecalMode == DecalMode::WIREFRAME)
+                glDrawArrays(GL_LINE_LOOP, 0, (GLsizei)task.vb.size());
+            else
+            {
+                if (task.structure == olc::DecalStructure::FAN)
+                    glDrawArrays(GL_TRIANGLE_FAN, 0, (GLsizei)task.vb.size());
+                else if (task.structure == olc::DecalStructure::STRIP)
+                    glDrawArrays(GL_TRIANGLE_STRIP, 0, (GLsizei)task.vb.size());
+                else if (task.structure == olc::DecalStructure::LIST)
+                    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)task.vb.size());
+                else if (task.structure == olc::DecalStructure::LINE)
+                    glDrawArrays(GL_LINES, 0, (GLsizei)task.vb.size());
+            }
+
+            if(task.depth)
+                glDisable(GL_DEPTH_TEST);
+        }
+    };
+}
+#endif
+// O------------------------------------------------------------------------------O
+// | END RENDERER: OpenGL 3.3 (3.0 es) (sh-sh-sh-shaders....)                     |
+// O------------------------------------------------------------------------------O
+
 #pragma endregion
 
 // O------------------------------------------------------------------------------O
@@ -7889,6 +8486,327 @@ extern "C"
 // O------------------------------------------------------------------------------O
 #pragma endregion
 
+#pragma region platform_macos
+// O------------------------------------------------------------------------------O
+// | START PLATFORM: MACOS New MACOD Platform, John Galvin                        |
+// O------------------------------------------------------------------------------O
+//
+// VERY IMPORTANT!!! The Apple port was originally created by @Mumflr (discord)
+// and the repo for the development of this project can be found here:
+// https://github.com/MumflrFumperdink/olcPGEMac which contains maccy goodness
+// and support on how to setup your build environment.
+//
+// "MASSIVE MASSIVE THANKS TO MUMFLR" - Javidx9
+// TODO: John Galvin: Fill in what has been updated
+#if defined(OLC_PLATFORM_MACOS)
+namespace olc {
+
+    class Platform_MACOS : public olc::Platform
+    {
+    public:
+        static std::atomic<bool>* bActiveRef;
+
+        virtual olc::rcode SetWindowSize(const olc::vi2d& vPos, const olc::vi2d& vSize) override
+        {
+            return olc::rcode::OK;
+        }
+
+        virtual olc::rcode ShowWindowFrame(const bool bShowFrame = true) override
+        {
+            return olc::rcode::OK;
+        }
+
+
+        virtual olc::rcode ApplicationStartUp() override {
+            return olc::rcode::OK;
+        }
+
+        virtual olc::rcode ApplicationCleanUp() override
+        {
+            return olc::rcode::OK;
+        }
+
+        virtual olc::rcode ThreadStartUp() override
+        {
+            return olc::rcode::OK;
+        }
+
+        virtual olc::rcode ThreadCleanUp() override
+        {
+            renderer->DestroyDevice();
+            return olc::OK;
+        }
+
+        virtual olc::rcode CreateGraphics(bool bFullScreen, bool bEnableVSYNC, const olc::vi2d& vViewPos, const olc::vi2d& vViewSize) override
+        {
+            if (renderer->CreateDevice({}, bFullScreen, bEnableVSYNC) == olc::rcode::OK)
+            {
+                renderer->UpdateViewport(vViewPos, vViewSize);
+                return olc::rcode::OK;
+            }
+            else
+                return olc::rcode::FAIL;
+        }
+
+        static void ExitMainLoop() {
+            if (!ptrPGE->OnUserDestroy()) {
+                *bActiveRef = true;
+                return;
+            }
+            platform->ThreadCleanUp();
+            platform->ApplicationCleanUp();
+            exit(0);
+        }
+
+#if defined(__APPLE__)
+        static void scrollWheelUpdate(id selff, SEL _sel, id theEvent) {
+            static const SEL deltaYSel = sel_registerName("deltaY");
+
+#if defined(__aarch64__) // Thanks ruarq!
+            double deltaY = ((double (*)(id, SEL))objc_msgSend)(theEvent, deltaYSel);
+#else
+            double deltaY = ((double (*)(id, SEL))objc_msgSend_fpret)(theEvent, deltaYSel);
+#endif
+
+            for (int i = 0; i < abs(deltaY); i++) {
+                if (deltaY > 0) {
+                    ptrPGE->olc_UpdateMouseWheel(-1);
+                }
+                else if (deltaY < 0) {
+                    ptrPGE->olc_UpdateMouseWheel(1);
+                }
+            }
+        }
+#endif
+        static void ThreadFunct() {
+#if defined(__APPLE__)
+            static bool hasEnabledCocoa = false;
+            if (!hasEnabledCocoa) {
+                // Objective-C Wizardry
+                Class NSApplicationClass = objc_getClass("NSApplication");
+
+                // NSApp = [NSApplication sharedApplication]
+                SEL sharedApplicationSel = sel_registerName("sharedApplication");
+                id NSApp = ((id(*)(Class, SEL))objc_msgSend)(NSApplicationClass, sharedApplicationSel);
+                // window = [NSApp mainWindow]
+                SEL mainWindowSel = sel_registerName("mainWindow");
+                id window = ((id(*)(id, SEL))objc_msgSend)(NSApp, mainWindowSel);
+
+                // [window setStyleMask: NSWindowStyleMaskClosable | ~NSWindowStyleMaskResizable]
+                SEL setStyleMaskSel = sel_registerName("setStyleMask:");
+                ((void (*)(id, SEL, NSUInteger))objc_msgSend)(window, setStyleMaskSel, 7);
+
+                hasEnabledCocoa = true;
+            }
+#endif
+            if (!*bActiveRef) {
+                ExitMainLoop();
+                return;
+            }
+            glutPostRedisplay();
+        }
+
+        static void DrawFunct() {
+            ptrPGE->olc_CoreUpdate();
+        }
+
+        virtual olc::rcode CreateWindowPane(const olc::vi2d& vWindowPos, olc::vi2d& vWindowSize, bool bFullScreen) override
+        {
+#if defined(__APPLE__)
+            Class GLUTViewClass = objc_getClass("GLUTView");
+
+            SEL scrollWheelSel = sel_registerName("scrollWheel:");
+            bool resultAddMethod = class_addMethod(GLUTViewClass, scrollWheelSel, (IMP)scrollWheelUpdate, "v@:@");
+            assert(resultAddMethod);
+#endif
+
+            renderer->PrepareDevice();
+
+            if (bFullScreen)
+            {
+                vWindowSize.x = glutGet(GLUT_SCREEN_WIDTH);
+                vWindowSize.y = glutGet(GLUT_SCREEN_HEIGHT);
+                glutFullScreen();
+            }
+            else
+            {
+                if (vWindowSize.x > glutGet(GLUT_SCREEN_WIDTH) || vWindowSize.y > glutGet(GLUT_SCREEN_HEIGHT))
+                {
+                    perror("ERROR: The specified window dimensions do not fit on your screen\n");
+                    return olc::FAIL;
+                }
+                glutReshapeWindow(vWindowSize.x, vWindowSize.y - 1);
+            }
+
+            // Create Keyboard Mapping
+            mapKeys[0x00] = Key::NONE;
+            mapKeys['A'] = Key::A; mapKeys['B'] = Key::B; mapKeys['C'] = Key::C; mapKeys['D'] = Key::D; mapKeys['E'] = Key::E;
+            mapKeys['F'] = Key::F; mapKeys['G'] = Key::G; mapKeys['H'] = Key::H; mapKeys['I'] = Key::I; mapKeys['J'] = Key::J;
+            mapKeys['K'] = Key::K; mapKeys['L'] = Key::L; mapKeys['M'] = Key::M; mapKeys['N'] = Key::N; mapKeys['O'] = Key::O;
+            mapKeys['P'] = Key::P; mapKeys['Q'] = Key::Q; mapKeys['R'] = Key::R; mapKeys['S'] = Key::S; mapKeys['T'] = Key::T;
+            mapKeys['U'] = Key::U; mapKeys['V'] = Key::V; mapKeys['W'] = Key::W; mapKeys['X'] = Key::X; mapKeys['Y'] = Key::Y;
+            mapKeys['Z'] = Key::Z;
+
+            mapKeys[GLUT_KEY_F1] = Key::F1; mapKeys[GLUT_KEY_F2] = Key::F2; mapKeys[GLUT_KEY_F3] = Key::F3; mapKeys[GLUT_KEY_F4] = Key::F4;
+            mapKeys[GLUT_KEY_F5] = Key::F5; mapKeys[GLUT_KEY_F6] = Key::F6; mapKeys[GLUT_KEY_F7] = Key::F7; mapKeys[GLUT_KEY_F8] = Key::F8;
+            mapKeys[GLUT_KEY_F9] = Key::F9; mapKeys[GLUT_KEY_F10] = Key::F10; mapKeys[GLUT_KEY_F11] = Key::F11; mapKeys[GLUT_KEY_F12] = Key::F12;
+
+            mapKeys[GLUT_KEY_DOWN] = Key::DOWN; mapKeys[GLUT_KEY_LEFT] = Key::LEFT; mapKeys[GLUT_KEY_RIGHT] = Key::RIGHT; mapKeys[GLUT_KEY_UP] = Key::UP;
+            mapKeys[13] = Key::ENTER;
+
+            mapKeys[127] = Key::BACK; mapKeys[27] = Key::ESCAPE;
+            mapKeys[9] = Key::TAB;  mapKeys[GLUT_KEY_HOME] = Key::HOME;
+            mapKeys[GLUT_KEY_END] = Key::END; mapKeys[GLUT_KEY_PAGE_UP] = Key::PGUP; mapKeys[GLUT_KEY_PAGE_DOWN] = Key::PGDN;    mapKeys[GLUT_KEY_INSERT] = Key::INS;
+            mapKeys[32] = Key::SPACE; mapKeys[46] = Key::PERIOD;
+
+            mapKeys[48] = Key::K0; mapKeys[49] = Key::K1; mapKeys[50] = Key::K2; mapKeys[51] = Key::K3; mapKeys[52] = Key::K4;
+            mapKeys[53] = Key::K5; mapKeys[54] = Key::K6; mapKeys[55] = Key::K7; mapKeys[56] = Key::K8; mapKeys[57] = Key::K9;
+
+            // NOTE: MISSING KEYS :O
+
+            // JAVIDX9 WOZ ERE - Rethinking some keyboad stuff has required
+            // some changes. MOst of them are trivial, but I'm not sure
+            // what's going on here and have no readily available testing
+            // suite either - its for MAC users. However broken as of 2.29
+
+            glutKeyboardFunc([](unsigned char key, int x, int y) -> void {
+                switch (glutGetModifiers()) {
+                case 0: //This is when there are no modifiers
+                    if ('a' <= key && key <= 'z') key -= 32;
+                    break;
+                case GLUT_ACTIVE_SHIFT:
+                    //    ptrPGE->olc_UpdateKeyState(Key::SHIFT, true);
+                    break;
+                case GLUT_ACTIVE_CTRL:
+                    if ('a' <= key && key <= 'z') key -= 32;
+                    //    ptrPGE->olc_UpdateKeyState(Key::CTRL, true);
+                    break;
+                case GLUT_ACTIVE_ALT:
+                    if ('a' <= key && key <= 'z') key -= 32;
+                    break;
+                }
+
+                //if (mapKeys[key])
+                ptrPGE->olc_UpdateKeyState(key, true);
+                });
+
+            glutKeyboardUpFunc([](unsigned char key, int x, int y) -> void {
+                switch (glutGetModifiers()) {
+                case 0: //This is when there are no modifiers
+                    if ('a' <= key && key <= 'z') key -= 32;
+                    break;
+                case GLUT_ACTIVE_SHIFT:
+                    //    ptrPGE->olc_UpdateKeyState(Key::SHIFT, false);
+                    break;
+                case GLUT_ACTIVE_CTRL:
+                    if ('a' <= key && key <= 'z') key -= 32;
+                    //    ptrPGE->olc_UpdateKeyState(Key::CTRL, false);
+                    break;
+                case GLUT_ACTIVE_ALT:
+                    if ('a' <= key && key <= 'z') key -= 32;
+                    //No ALT in PGE
+                    break;
+                }
+
+                //if (mapKeys[key])
+                ptrPGE->olc_UpdateKeyState(key, false);
+                });
+
+            //Special keys
+            glutSpecialFunc([](int key, int x, int y) -> void {
+                //if (mapKeys[key])
+                ptrPGE->olc_UpdateKeyState(key, true);
+                });
+
+            glutSpecialUpFunc([](int key, int x, int y) -> void {
+                //if (mapKeys[key])
+                ptrPGE->olc_UpdateKeyState(key, false);
+                });
+
+            glutMouseFunc([](int button, int state, int x, int y) -> void {
+                switch (button) {
+                case GLUT_LEFT_BUTTON:
+                    if (state == GLUT_UP) ptrPGE->olc_UpdateMouseState(0, false);
+                    else if (state == GLUT_DOWN) ptrPGE->olc_UpdateMouseState(0, true);
+                    break;
+                case GLUT_MIDDLE_BUTTON:
+                    if (state == GLUT_UP) ptrPGE->olc_UpdateMouseState(2, false);
+                    else if (state == GLUT_DOWN) ptrPGE->olc_UpdateMouseState(2, true);
+                    break;
+                case GLUT_RIGHT_BUTTON:
+                    if (state == GLUT_UP) ptrPGE->olc_UpdateMouseState(1, false);
+                    else if (state == GLUT_DOWN) ptrPGE->olc_UpdateMouseState(1, true);
+                    break;
+                }
+                });
+
+            auto mouseMoveCall = [](int x, int y) -> void {
+                ptrPGE->olc_UpdateMouse(x, y);
+                };
+
+            glutMotionFunc(mouseMoveCall);
+            glutPassiveMotionFunc(mouseMoveCall);
+
+            glutEntryFunc([](int state) -> void {
+                if (state == GLUT_ENTERED) ptrPGE->olc_UpdateKeyFocus(true);
+                else if (state == GLUT_LEFT) ptrPGE->olc_UpdateKeyFocus(false);
+                });
+
+            glutDisplayFunc(DrawFunct);
+            glutIdleFunc(ThreadFunct);
+
+            return olc::OK;
+        }
+
+        virtual olc::rcode SetWindowTitle(const std::string& s) override
+        {
+            glutSetWindowTitle(s.c_str());
+            return olc::OK;
+        }
+
+        virtual olc::rcode StartSystemEventLoop() override {
+            glutMainLoop();
+            return olc::OK;
+        }
+
+        virtual olc::rcode HandleSystemEvent() override
+        {
+            return olc::OK;
+        }
+    };
+
+    //std::atomic<bool>* Platform_GLUT::bActiveRef{ nullptr };
+
+    //Custom Start
+    olc::rcode PixelGameEngine::Start()
+    {
+        if (platform->ApplicationStartUp() != olc::OK) return olc::FAIL;
+
+        // Construct the window
+        if (platform->CreateWindowPane({ 30,30 }, vWindowSize, bFullScreen) != olc::OK) return olc::FAIL;
+        olc_UpdateWindowSize(vWindowSize.x, vWindowSize.y);
+
+        if (platform->ThreadStartUp() == olc::FAIL)  return olc::FAIL;
+        olc_PrepareEngine();
+        if (!OnUserCreate()) return olc::FAIL;
+        Platform_GLUT::bActiveRef = &bAtomActive;
+        glutWMCloseFunc(Platform_GLUT::ExitMainLoop);
+        bAtomActive = true;
+        platform->StartSystemEventLoop();
+
+        //This code will not even be run but why not
+        if (platform->ApplicationCleanUp() != olc::OK) return olc::FAIL;
+
+        return olc::OK;
+    }
+}
+
+#endif
+// O------------------------------------------------------------------------------O
+// | END PLATFORM: MACOS                                                           |
+// O------------------------------------------------------------------------------O
+#pragma endregion
+
 
 #endif // Headless
 
@@ -7935,7 +8853,7 @@ namespace olc
 #endif
 
 #if defined(OLC_PLATFORM_GLUT)
-		platform = std::make_unique<olc::Platform_GLUT>();
+		// platform = std::make_unique<olc::Platform_GLUT>(); // TODO: John Galvin, Uncomment
 #endif
 
 #if defined(OLC_PLATFORM_EMSCRIPTEN)
@@ -7976,12 +8894,12 @@ namespace olc
 
         // John Galvin: Added MACOS platform
 #if defined(OLC_PLATFORM_MACOS)
-        platform = std::make_unique<olc::Platform_GLUT>();
+        platform = std::make_unique<olc::Platform_MACOS>();
 #endif
 
         // TODO: John Galvin: Remove Temp class for MAC
-#if defined(OLC_GFX_OpenGL45)
-        renderer = std::make_unique<olc::Renderer_DX11>();
+#if defined(OLC_GFX_MACOS_TEMP)
+        renderer = std::make_unique<olc::Renderer_MACOS_TEMP>();
 #endif
         // John Galvin: Added Metal GFX
         // TODO: John Galvin: Add Metal functionailty to support M3/M4 chips
