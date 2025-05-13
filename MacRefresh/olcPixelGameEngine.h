@@ -5278,7 +5278,7 @@ namespace olc
 			glDisable(GL_CULL_FACE);
 		}
 
-		void SetDecalMode(const olc::DecalMode& mode)
+		void SetDecalMode(const olc::DecalMode& mode) override // John Galvin: MAC Changes removed override warnings
 		{
 			if (mode != nDecalMode)
 			{
@@ -5387,7 +5387,7 @@ namespace olc
 
 		}
 
-		void Set3DProjection(const std::array<float, 16>& mat)
+		void Set3DProjection(const std::array<float, 16>& mat) override // John Galvin: MAC Changes removed override warnings
 		{
 			matProjection = mat;
 		}
@@ -7956,6 +7956,17 @@ namespace olc
 
 #if defined(OLC_GFX_CUSTOM_EX)
 		renderer = std::make_unique<OLC_RENDERER_CUSTOM_EX>();
+#endif
+
+        // John Galvin: Added MACOS platform
+#if defined(OLC_PLATFORM_MACOS)
+        platform = std::make_unique<olc::Platform_GLUT>();
+#endif
+        
+        // John Galvin: Added Metal GFX
+        // TODO: John Galvin: Add Metal functionailty to support M3/M4 chips
+#if defined(OLC_GFX_METAL)
+        renderer = std::make_unique<olc::Renderer_METAL>();
 #endif
 
 		// Associate components with PGE instance
