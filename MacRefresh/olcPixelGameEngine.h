@@ -506,8 +506,8 @@ namespace _gfs = std::filesystem;
 #endif
 #if defined(__APPLE__)
 #define GL_SILENCE_DEPRECATION
-#define OLC_PLATFORM_MACOS       // John Galvin: Removed #define OLC_PLATFORM_GLUT and replaced with MACOS Platform
-//#define OLC_PLATFORM_GLUT
+#define OLC_PLATFORM_MACOS      // John Galvin: Removed #define OLC_PLATFORM_GLUT and replaced with MACOS Platform
+#define PGE_USE_CUSTOM_START    // John Galvin: Apple will need its own start up
 #endif
 #if defined(__EMSCRIPTEN__)
 #define OLC_PLATFORM_EMSCRIPTEN
@@ -528,7 +528,7 @@ namespace _gfs = std::filesystem;
 #if defined(OLC_PLATFORM_EMSCRIPTEN)
 #define OLC_GFX_OPENGL33
 #else
-// TODO: John Galvin: remove temp code
+// TODO: John Galvin: remove temp code, this forces us to use OLC_GFX_MACOS_TEMP
     #if !defined(__APPLE__)
         #define OLC_GFX_OPENGL10
     #endif
@@ -608,7 +608,8 @@ namespace X11
 #include <GL/glut.h>
 #include <GL/freeglut_ext.h>
 #endif
-#if defined(__APPLE__)
+
+#if defined(__APPLE__) // TODO: John Galvin, removed as they are now moved to Platform_MACOS
 #include <GLUT/glut.h>
 #include <objc/message.h>
 #include <objc/NSObjCRuntime.h>
@@ -1811,7 +1812,11 @@ namespace olc
 	typedef void CALLSTYLE locShaderSource_t(GLuint shader, GLsizei count, const GLchar* const* string, const GLint* length);
 	typedef EGLBoolean(locSwapInterval_t)(EGLDisplay display, EGLint interval);
 #else
-	typedef void CALLSTYLE locShaderSource_t(GLuint shader, GLsizei count, const GLchar** string, const GLint* length);
+    #if defined(__APPLE__)  // John Galvin updated locShaderSource_t to support MACOS
+        typedef void CALLSTYLE locShaderSource_t(GLuint shader, GLsizei count, const GLchar* const* string, const GLint* length);
+    #else
+        typedef void CALLSTYLE locShaderSource_t(GLuint shader, GLsizei count, const GLchar** string, const GLint* length);
+    #endif
 #endif
 
 } // olc namespace
@@ -6287,14 +6292,9 @@ namespace olc
         EGLSurface olc_Surface;
 #endif
 
-#if defined(OLC_PLATFORM_GLUT)
+
         bool mFullScreen = false;
-#else
-#if !defined(OLC_PLATFORM_EMSCRIPTEN)
-        glDeviceContext_t glDeviceContext = 0;
-        glRenderContext_t glRenderContext = 0;
-#endif
-#endif
+
         bool bSync = false;
         olc::DecalMode nDecalMode = olc::DecalMode(-1); // Thanks Gusgo & Bispoo
 #if defined(OLC_PLATFORM_X11)
@@ -6320,7 +6320,7 @@ namespace olc
         locUseProgram_t* locUseProgram = nullptr;
         locBindVertexArray_t* locBindVertexArray = nullptr;
         locGenVertexArrays_t* locGenVertexArrays = nullptr;
-        locSwapInterval_t* locSwapInterval = nullptr;
+        //locSwapInterval_t* locSwapInterval = nullptr;
         locGetShaderInfoLog_t* locGetShaderInfoLog = nullptr;
         locGetUniformLocation_t* locGetUniformLocation = nullptr;
         locUniformMatrix4fv_t* locUniformMatrix4fv = nullptr;
@@ -6477,12 +6477,12 @@ namespace olc
             locUniform4fv = OGL_LOAD(locUniform4fv_t, glUniform4fv);
             locUniformMatrix4fv = OGL_LOAD(locUniformMatrix4fv_t, glUniformMatrix4fv);
             locGetUniformLocation = OGL_LOAD(locGetUniformLocation_t, glGetUniformLocation);
-#if !defined(OLC_PLATFORM_EMSCRIPTEN)
+#if !defined(OLC_PLATFORM_EMSCRIPTEN) && !defined(__APPLE__)    // TODO: John Galvin, clean up
             locBindVertexArray = OGL_LOAD(locBindVertexArray_t, glBindVertexArray);
             locGenVertexArrays = OGL_LOAD(locGenVertexArrays_t, glGenVertexArrays);
 #else
-            locBindVertexArray = glBindVertexArrayOES;
-            locGenVertexArrays = glGenVertexArraysOES;
+            locBindVertexArray = glBindVertexArrayAPPLE;
+            locGenVertexArrays = glGenVertexArraysAPPLE;
 #endif
 
             // Load & Compile Quad Shader - assumes no errors
@@ -6766,7 +6766,7 @@ namespace olc
             glViewport(pos.x, pos.y, size.x, size.y);
         }
 
-        void Set3DProjection(const std::array<float, 16>& mat)
+        void Set3DProjection(const std::array<float, 16>& mat) override // John Galvin, remove override warnings
         {
             matProjection = mat;
         }
@@ -8499,6 +8499,12 @@ extern "C"
 // "MASSIVE MASSIVE THANKS TO MUMFLR" - Javidx9
 // TODO: John Galvin: Fill in what has been updated
 #if defined(OLC_PLATFORM_MACOS)
+
+// John Galvin: Some Objective C stuff to get the party started
+#include <GLUT/GLUT.h>
+#include <objc/message.h>           // Manages input messages to the window (Keyboard etc)
+#include <objc/NSObjCRuntime.h>     // Manages a object (windows in our case)
+
 namespace olc {
 
     class Platform_MACOS : public olc::Platform
@@ -8558,8 +8564,10 @@ namespace olc {
             exit(0);
         }
 
-#if defined(__APPLE__)
-        static void scrollWheelUpdate(id selff, SEL _sel, id theEvent) {
+        // TODO: Add code to manage scroll wheel
+        
+        static void scrollWheelUpdate(id selff, SEL _sel, id theEvent)
+        {
             static const SEL deltaYSel = sel_registerName("deltaY");
 
 #if defined(__aarch64__) // Thanks ruarq!
@@ -8577,9 +8585,12 @@ namespace olc {
                 }
             }
         }
-#endif
+         
+
         static void ThreadFunct() {
-#if defined(__APPLE__)
+
+            // TODO: John Galvin: Needs an old re-think
+            // This needs to be create using pure Objective C...
             static bool hasEnabledCocoa = false;
             if (!hasEnabledCocoa) {
                 // Objective-C Wizardry
@@ -8598,7 +8609,7 @@ namespace olc {
 
                 hasEnabledCocoa = true;
             }
-#endif
+
             if (!*bActiveRef) {
                 ExitMainLoop();
                 return;
@@ -8775,7 +8786,7 @@ namespace olc {
         }
     };
 
-    //std::atomic<bool>* Platform_GLUT::bActiveRef{ nullptr };
+    std::atomic<bool>* Platform_MACOS::bActiveRef{ nullptr };
 
     //Custom Start
     olc::rcode PixelGameEngine::Start()
@@ -8789,8 +8800,8 @@ namespace olc {
         if (platform->ThreadStartUp() == olc::FAIL)  return olc::FAIL;
         olc_PrepareEngine();
         if (!OnUserCreate()) return olc::FAIL;
-        Platform_GLUT::bActiveRef = &bAtomActive;
-        glutWMCloseFunc(Platform_GLUT::ExitMainLoop);
+        //Platform_GLUT::bActiveRef = &bAtomActive;
+        //glutWMCloseFunc(Platform_GLUT::ExitMainLoop);
         bAtomActive = true;
         platform->StartSystemEventLoop();
 
