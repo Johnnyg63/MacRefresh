@@ -1,7 +1,4 @@
 
-
-
-
 #define OLC_PGE_APPLICATION
 // MACOS requires stb_image.h to be placed in the same folder as olcPixelGameEngine.h
 // You can still use OLC_IMAGE_LIBPNG by removing the define below
