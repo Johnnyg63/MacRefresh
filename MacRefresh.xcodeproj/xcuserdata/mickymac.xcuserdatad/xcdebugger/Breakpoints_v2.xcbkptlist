@@ -7,32 +7,16 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "AD2DB52D-DE67-4DA4-BAD7-06FF09B208EF"
+            uuid = "4920E7C8-DA3C-4463-8F7B-96CD5453C5B4"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "MacRefresh/olcPixelGameEngine.h"
+            filePath = "metal-cpp-extensions/AppKit/NSWindow.hpp"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "8590"
-            endingLineNumber = "8590"
-            landmarkName = "ApplicationStartUp()"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "3685F92B-B167-474A-809C-E0197A4C6A80"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "MacRefresh/olcPixelGameEngine.h"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "8907"
-            endingLineNumber = "8907"
-            landmarkName = "MyAppDelegate::createMenuBar()"
+            startingLineNumber = "60"
+            endingLineNumber = "60"
+            landmarkName = "NS::Window::init(contentRect, styleMask, backing, defer)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

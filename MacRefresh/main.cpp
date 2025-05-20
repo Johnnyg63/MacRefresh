@@ -1,11 +1,6 @@
-
+#define OLC_GFX_OPENGL33
 #define OLC_PGE_APPLICATION
-// MACOS requires stb_image.h to be placed in the same folder as olcPixelGameEngine.h
-// You can still use OLC_IMAGE_LIBPNG by removing the define below
-#define OLC_GFX_MACOS_TEMP
-#define OLC_IMAGE_STB
 #include "olcPixelGameEngine.h"
-
 
 class Example : public olc::PixelGameEngine {
     public:
@@ -33,9 +28,9 @@ class Example : public olc::PixelGameEngine {
 
 
 int main(int argc, char const *argv[]) {
-	Example demo;
-	if (demo.Construct(15, 10, 32, 32))
-		demo.Start();
+    Example demo;
+    if (demo.Construct(15, 10, 32, 32))
+        demo.Start();
 
-	return 0;
+    return 0;
 }
